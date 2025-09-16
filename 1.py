@@ -1,248 +1,245 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.title("⚽ 手機觸控足球遊戲 + 障礙物 + 血量系統")
+st.title("🏎️ Streamlit 賽車遊戲 - 升級版")
+st.write("電腦：方向鍵或滑鼠移動 🚗｜手機：左右滑動 🚘")
 
 game_html = """
 <!DOCTYPE html>
 <html>
 <head>
   <style>
-    body { background: #87CEEB; display: flex; justify-content: center; }
+    body { background: #111; }
     #game {
-      width: 400px;
+      width: 300px;
       height: 500px;
-      background: #e0f7fa;
-      border: 4px solid #000;
+      background: #222;
+      margin: auto;
       position: relative;
       overflow: hidden;
-      touch-action: none;
+      border: 3px solid white;
     }
-    #ball {
-      width: 40px;
+    /* 護欄 */
+    .barrier {
+      width: 20px;
+      height: 500px;
+      background: gray;
+      position: absolute;
+      top: 0;
+    }
+    #leftBarrier { left: 0; }
+    #rightBarrier { right: 0; }
+
+    /* 賽道線條 */
+    .lane-line {
+      width: 5px;
       height: 40px;
+      background: white;
+      position: absolute;
+      left: 150px;
+      animation: moveLine 1s linear infinite;
+    }
+    @keyframes moveLine {
+      0% { top: -40px; }
+      100% { top: 500px; }
+    }
+
+    /* 車輛樣式 */
+    .car {
+      width: 40px;
+      height: 70px;
+      position: absolute;
+      bottom: 20px;
+      border-radius: 5px;
+    }
+    .car-body {
+      width: 100%;
+      height: 100%;
+      border-radius: 8px;
+      position: relative;
+    }
+    .window {
+      width: 26px;
+      height: 20px;
+      background: white;
+      border-radius: 3px;
+      position: absolute;
+      top: 8px;
+      left: 7px;
+    }
+    .wheel {
+      width: 12px;
+      height: 12px;
       background: black;
       border-radius: 50%;
       position: absolute;
-      bottom: 20px;
-      left: 180px;
     }
-    #goal {
-      width: 100px;
-      height: 60px;
-      border: 4px solid red;
-      position: absolute;
-      top: 50px;
-      left: 150px;
-      border-bottom: none;
+    .wheel.left { left: -6px; }
+    .wheel.right { right: -6px; }
+    .wheel.top { top: 10px; }
+    .wheel.bottom { bottom: 10px; }
+
+    /* 玩家車（紅色） */
+    #car .car-body { background: red; }
+
+    /* 障礙車（藍色） */
+    .obstacle .car-body { background: blue; }
+
+    #score {
+      color: white;
+      font-size: 20px;
+      text-align: center;
+      margin-top: 10px;
     }
-    #obstacle {
-      width: 80px;
-      height: 20px;
-      background: brown;
-      position: absolute;
-      top: 200px;
-      left: 0px;
-    }
-    .falling {
-      width: 30px;
-      height: 30px;
-      background: gray;
-      border-radius: 50%;
-      position: absolute;
-      top: -30px;
-    }
-    #scoreBoard, #timeBoard, #hpBoard {
-      position: absolute;
-      font-size: 18px;
-      font-weight: bold;
-      color: black;
-    }
-    #scoreBoard { top: 10px; left: 10px; }
-    #timeBoard { top: 10px; right: 10px; }
-    #hpBoard { bottom: 10px; left: 10px; }
   </style>
 </head>
 <body>
+  <div id="score">Score: 0</div>
   <div id="game">
-    <div id="scoreBoard">分數: 0</div>
-    <div id="timeBoard">時間: 60</div>
-    <div id="hpBoard">HP: ❤️❤️❤️</div>
-    <div id="ball"></div>
-    <div id="goal"></div>
-    <div id="obstacle"></div>
+    <div id="leftBarrier" class="barrier"></div>
+    <div id="rightBarrier" class="barrier"></div>
+
+    <!-- 玩家車 -->
+    <div id="car" class="car" style="left:130px;">
+      <div class="car-body">
+        <div class="window"></div>
+        <div class="wheel left top"></div>
+        <div class="wheel right top"></div>
+        <div class="wheel left bottom"></div>
+        <div class="wheel right bottom"></div>
+      </div>
+    </div>
   </div>
 
   <script>
     const game = document.getElementById("game");
-    const ball = document.getElementById("ball");
-    const goal = document.getElementById("goal");
-    const obstacle = document.getElementById("obstacle");
-    const scoreBoard = document.getElementById("scoreBoard");
-    const timeBoard = document.getElementById("timeBoard");
-    const hpBoard = document.getElementById("hpBoard");
+    const car = document.getElementById("car");
+    const scoreDisplay = document.getElementById("score");
+    const leftBarrier = document.getElementById("leftBarrier");
+    const rightBarrier = document.getElementById("rightBarrier");
 
-    let ballX = 180, ballY = 20, velocityY = 0, gravity = -0.4;
-    let score = 0, timeLeft = 60, gameActive = true;
-    let hp = 3;
+    let carX = 130;
+    let score = 0;
+    let gameOver = false;
 
-    let goalX = 150, goalY = 50, goalWidth = 100, goalHeight = 60;
-    let dx = 3, dy = 2;
-
-    let obsX = 0, obsY = 200, obsWidth = 80, obsHeight = 20;
-    let obsDx = 4;
-
-    let fallingObstacles = [];
-
-    // 點擊跳躍
-    document.body.addEventListener("click", () => {
-      if(gameActive) velocityY = 8;
-    });
-
-    // 滑動移動
-    let startX = null;
-    document.body.addEventListener("touchstart", (e) => { startX = e.touches[0].clientX; });
-    document.body.addEventListener("touchmove", (e) => {
-      if (startX !== null) {
-        let deltaX = e.touches[0].clientX - startX;
-        ballX += deltaX;
-        if(ballX < 0) ballX = 0;
-        if(ballX > 360) ballX = 360;
-        ball.style.left = ballX + "px";
-        startX = e.touches[0].clientX;
-      }
-    });
-    document.body.addEventListener("touchend", () => { startX = null; });
-
-    function resetBall() {
-      ballX = 180;
-      ballY = 20;
-      velocityY = 0;
-      ball.style.left = ballX + "px";
-      ball.style.bottom = ballY + "px";
+    function moveCar(dx) {
+      carX += dx;
+      if (carX < 0) carX = 0;
+      if (carX > 260) carX = 260;
+      car.style.left = carX + "px";
+      checkBarrierCollision();
     }
 
-    function loseHP() {
-      hp--;
-      let hearts = "❤️".repeat(hp);
-      hpBoard.innerText = "HP: " + (hearts || "💀");
-      if (hp <= 0) {
-        gameActive = false;
-        alert("💀 遊戲結束！\\n你的分數是: " + score);
+    function setCarX(x) {
+      if (x < 0) x = 0;
+      if (x > 260) x = 260;
+      carX = x;
+      car.style.left = carX + "px";
+      checkBarrierCollision();
+    }
+
+    // 碰到護欄檢查
+    function checkBarrierCollision() {
+      let carRect = car.getBoundingClientRect();
+      let leftRect = leftBarrier.getBoundingClientRect();
+      let rightRect = rightBarrier.getBoundingClientRect();
+
+      if (
+        carRect.left <= leftRect.right ||
+        carRect.right >= rightRect.left
+      ) {
+        gameOver = true;
+        alert("🚧 撞到護欄！遊戲結束！得分：" + score);
         location.reload();
-      } else {
-        resetBall();
       }
     }
 
-    function spawnFallingObstacle() {
-      if(!gameActive) return;
-      let obs = document.createElement("div");
-      obs.classList.add("falling");
-      obs.style.left = Math.floor(Math.random() * 370) + "px";
-      obs.style.top = "-30px";
+    // 鍵盤控制 (電腦)
+    document.addEventListener("keydown", function(e) {
+      if (e.key === "ArrowLeft") moveCar(-20);
+      if (e.key === "ArrowRight") moveCar(20);
+    });
+
+    // 滑鼠控制 (電腦)
+    game.addEventListener("mousemove", e => {
+      let rect = game.getBoundingClientRect();
+      let mouseX = e.clientX - rect.left;
+      setCarX(mouseX - 20);
+    });
+
+    // 觸控控制 (手機)
+    game.addEventListener("touchmove", e => {
+      let rect = game.getBoundingClientRect();
+      let touchX = e.touches[0].clientX - rect.left;
+      setCarX(touchX - 20);
+    });
+
+    // 建立障礙車
+    function createObstacle() {
+      if (gameOver) return;
+      const obs = document.createElement("div");
+      obs.classList.add("car", "obstacle");
+      obs.style.left = Math.floor(Math.random() * 5) * 60 + "px";
+      obs.style.top = "-100px";
+
+      // 內部藍色小車
+      obs.innerHTML = `
+        <div class="car-body">
+          <div class="window"></div>
+          <div class="wheel left top"></div>
+          <div class="wheel right top"></div>
+          <div class="wheel left bottom"></div>
+          <div class="wheel right bottom"></div>
+        </div>
+      `;
       game.appendChild(obs);
-      fallingObstacles.push(obs);
-    }
 
-    function gameLoop() {
-      if(!gameActive) return;
+      let obsInterval = setInterval(() => {
+        if (gameOver) {
+          clearInterval(obsInterval);
+          return;
+        }
+        let obsTop = parseInt(obs.style.top);
+        obsTop += 5;
+        obs.style.top = obsTop + "px";
 
-      // 球移動
-      ballY += velocityY;
-      velocityY += gravity;
-      if(ballY < 0){ ballY = 0; velocityY = 0; }
-      ball.style.bottom = ballY + "px";
-      ball.style.left = ballX + "px";
-
-      // 球門移動
-      goalX += dx; goalY += dy;
-      if(goalX <= 0 || goalX + goalWidth >= 400) dx *= -1;
-      if(goalY <= 30 || goalY + goalHeight >= 250) dy *= -1;
-      goal.style.left = goalX + "px";
-      goal.style.top = goalY + "px";
-
-      // 障礙物移動
-      obsX += obsDx;
-      if(obsX <= 0 || obsX + obsWidth >= 400) obsDx *= -1;
-      obstacle.style.left = obsX + "px";
-      obstacle.style.top = obsY + "px";
-
-      let ballRect = ball.getBoundingClientRect();
-      let goalRect = goal.getBoundingClientRect();
-      let obsRect = obstacle.getBoundingClientRect();
-
-      // 撞到橫向障礙物
-      if (
-        ballRect.bottom >= obsRect.top &&
-        ballRect.top <= obsRect.bottom &&
-        ballRect.left + 20 >= obsRect.left &&
-        ballRect.right - 20 <= obsRect.right
-      ) {
-        loseHP();
-      }
-
-      // 更新掉落障礙物
-      for (let i = 0; i < fallingObstacles.length; i++) {
-        let fo = fallingObstacles[i];
-        let top = parseInt(fo.style.top);
-        fo.style.top = (top + 5) + "px";
-
-        let foRect = fo.getBoundingClientRect();
+        // 碰撞檢測
+        let carRect = car.getBoundingClientRect();
+        let obsRect = obs.getBoundingClientRect();
         if (
-          ballRect.bottom >= foRect.top &&
-          ballRect.top <= foRect.bottom &&
-          ballRect.left + 20 >= foRect.left &&
-          ballRect.right - 20 <= foRect.right
+          carRect.left < obsRect.right &&
+          carRect.right > obsRect.left &&
+          carRect.top < obsRect.bottom &&
+          carRect.bottom > obsRect.top
         ) {
-          loseHP();
-          fo.remove();
-          fallingObstacles.splice(i, 1);
-          i--;
-        }
-
-        if (top > 500) {
-          fo.remove();
-          fallingObstacles.splice(i, 1);
-          i--;
-        }
-      }
-
-      // 進球判斷
-      if (
-        ballRect.bottom >= goalRect.top &&
-        ballRect.top <= goalRect.bottom &&
-        ballRect.left + 20 >= goalRect.left &&
-        ballRect.right - 20 <= goalRect.right
-      ) {
-        score++;
-        scoreBoard.innerText = "分數: " + score;
-        resetBall();
-        if(score % 3 === 0){ dx *= 1.2; dy *= 1.2; obsDx *= 1.2; }
-      }
-    }
-
-    function startTimer() {
-      const timer = setInterval(() => {
-        if(!gameActive) { clearInterval(timer); return; }
-        timeLeft--;
-        timeBoard.innerText = "時間: " + timeLeft;
-        if(timeLeft <= 0){
-          gameActive = false;
-          alert("⏱️ 遊戲結束！\\n你的分數是: " + score);
+          gameOver = true;
+          alert("💥 撞車啦！遊戲結束！得分：" + score);
           location.reload();
         }
-      }, 1000);
 
-      // 每 2 秒掉一個石頭
-      setInterval(spawnFallingObstacle, 2000);
+        // 通過障礙物加分
+        if (obsTop > 500) {
+          clearInterval(obsInterval);
+          obs.remove();
+          score++;
+          scoreDisplay.innerText = "Score: " + score;
+        }
+      }, 30);
     }
 
-    setInterval(gameLoop, 30);
-    startTimer();
+    setInterval(createObstacle, 1500);
+
+    // 建立不斷移動的白線
+    setInterval(() => {
+      if (gameOver) return;
+      const line = document.createElement("div");
+      line.classList.add("lane-line");
+      game.appendChild(line);
+      setTimeout(() => line.remove(), 1000);
+    }, 300);
   </script>
 </body>
 </html>
 """
 
-components.html(game_html, height=550)
+components.html(game_html, height=600)
