@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.title(🏎️ Racing games)
+st.title(" Racing games")
 st.write("電腦：方向鍵或滑鼠移動 🚗｜手機：左右滑動 🚘")
 
 game_html = """
