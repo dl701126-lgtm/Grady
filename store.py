@@ -1,24 +1,23 @@
 import streamlit as st
-import json
 
-st.set_page_config(page_title="Stationery & Tomica Store", layout="wide")
+st.set_page_config(page_title="My Online Store", layout="wide")
 
-# 讀取商品資料
-with open("products.json", "r", encoding="utf-8") as f:
-    products = json.load(f)
+st.title("🛒 Online Store ")
 
-st.title("🛍️ my online store")
+# 商品資料
+products = [
+    {"name": "原子筆", "price": 20, "img": "images/pen.jpg"},
+    {"name": "橡皮擦", "price": 15, "img": "images/eraser.jpg"},
+    {"name": "Tomica 小汽車 No.1", "price": 120, "img": "images/tomica1.jpg"},
+]
 
+# 用三欄顯示
 cols = st.columns(3)
 
-# 顯示商品
-for idx, item in enumerate(products):
-    with cols[idx % 3]:
-        st.image(item["image"], width=220)
-        st.subheader(item["name"])
-        st.write(item["description"])
-        st.write(f"💰 價格：NT$ {item['price']}")
-        st.button("加入購物車", key=f"add_{idx}")
-
-st.markdown("---")
-st.write("示範版本：目前尚未包含真正購物車功能。")
+for col, product in zip(cols, products):
+    with col:
+        st.image(product["img"], width=200)
+        st.subheader(product["name"])
+        st.write(f"💲 Price: {product['price']} 元")
+        if st.button(f"加入購物車：{product['name']}"):
+            st.success(f"{product['name']} 已加入購物車！")
